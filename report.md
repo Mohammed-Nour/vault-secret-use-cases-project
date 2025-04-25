@@ -258,3 +258,185 @@ curl http://localhost:8080
 ---
 
 This use case by **Mohamad** demonstrates how to securely inject secrets into a Kubernetes-based application using Vault and Helm and retrive data from api.
+
+
+## Use Case 2: Token-Based API Access (Ali’s Implementation)
+
+Ali’s second use case shows how to store an API URL and access token in Vault, inject them into a Kubernetes pod, and use them in a Flask app to authenticate requests.
+
+---
+
+### 1. Environment Setup (Same as Use Case 1)
+
+Follow these steps (already covered in Use Case 1):
+
+- Launch an AWS EC2 instance (Ubuntu).
+- Install `kubectl`, `minikube`, `docker`, and `helm`.
+- Deploy HashiCorp Vault with Helm and verify the Vault pod is running.
+
+---
+
+### 2. Generate and Store the Token in Vault
+
+#### a. Generate a random token locally
+
+```bash
+# Generate a 128-bit (16-byte) hex token
+echo "$(openssl rand -hex 16)"  
+# Example output: 0e5ca54075b7af0e785b75fe0f708517
+```
+
+![Generated token](screenshots/image-5.png)
+
+#### b. Store the token and API URL in Vault
+
+```bash
+vault kv put internal/token/api-client \
+  api_url="https://jsonplaceholder.typicode.com/posts" \
+  token="0e5ca54075b7af0e785b75fe0f708517"
+```
+
+---
+
+### 3. Configure Vault Policy and Kubernetes Role
+
+1. **Create a Vault policy** that grants read access to the token path:
+
+   ```bash
+   vault policy write extended-api-fetcher - <<EOF
+   path "internal/data/token/api-client" {
+     capabilities = ["read"]
+   }
+   EOF
+   ```
+
+2. **Define a Kubernetes auth role** using that policy:
+
+   ```bash
+   vault write auth/kubernetes/role/extended-api-fetcher \
+     bound_service_account_names=extended-api-fetcher \
+     bound_service_account_namespaces=default \
+     policies=extended-api-fetcher \
+     ttl=24h
+   ```
+
+![Token stored in Vault](screenshots/image-11.png)
+
+---
+
+### 4. Build and Push the Docker Image
+
+Ali’s Flask application reads the `API_URL` and `X-API-Token` header to authorize. Build and push:
+
+```bash
+# Build the image (no cache)
+docker build . -t oshaheen1882051/extended-api-fetcher:v-1.0.0 --no-cache
+
+# Push to Docker Hub
+docker push oshaheen1882051/extended-api-fetcher:v-1.0.0
+```
+
+![Docker build and push](screenshots/image-13.png)
+
+---
+
+### 5. Prepare the Helm Chart
+
+1. Create a new chart:
+
+   ```bash
+   helm create extended-api-fetcher
+   ```
+
+2. Update `values.yaml`:
+
+   ```yaml
+   image:
+     repository: oshaheen1882051/extended-api-fetcher
+     pullPolicy: Always
+     tag: "v-1.0.0"
+
+   serviceAccount:
+     create: true
+     automount: true
+     name: extended-api-fetcher
+
+   vault:
+     role: extended-api-fetcher
+     secretPath: internal/data/token/api-client
+     apiUrlKey: api_url
+     tokenKey: token
+
+   service:
+     type: ClusterIP
+     port: 8080
+
+   livenessProbe:
+     httpGet:
+       path: /healthz
+       port: http
+     initialDelaySeconds: 10
+     periodSeconds: 10
+
+   readinessProbe:
+     httpGet:
+       path: /healthz
+       port: http
+     initialDelaySeconds: 5
+     periodSeconds: 5
+   ```
+
+3. Add Vault annotations in `templates/deployment.yaml`:
+
+   ```yaml
+   metadata:
+     annotations:
+       vault.hashicorp.com/agent-inject: "true"
+       vault.hashicorp.com/role: "{{ .Values.vault.role }}"
+       vault.hashicorp.com/agent-inject-secret-api_url: "{{ .Values.vault.secretPath }}"
+       vault.hashicorp.com/agent-inject-template-api_url: |
+         {{`{{- with secret "`}}{{ .Values.vault.secretPath }}{{`" -}}`}}
+         {{`{{ .Data.data.api_url }}`}}
+         {{`{{- end }}`}}
+       vault.hashicorp.com/agent-inject-secret-token: "{{ .Values.vault.secretPath }}"
+       vault.hashicorp.com/agent-inject-template-token: |
+         {{`{{- with secret "`}}{{ .Values.vault.secretPath }}{{`" -}}`}}
+         {{`{{ .Data.data.token }}`}}
+         {{`{{- end }}`}}
+   ```
+
+---
+
+### 6. Deploy and Test
+
+1. Install the Helm chart:
+
+   ```bash
+   helm install extended-api-fetcher ./extended-api-fetcher
+   ```
+
+   ![Helm install output](screenshots/image-12.png)
+
+2. Port-forward and call the service with the token in a header:
+
+   ```bash
+   kubectl port-forward svc/extended-api-fetcher 8080:8080
+
+   curl -v \
+     -H "X-API-Token: 0e5ca54075b7af0e785b75fe0f708517" \
+     http://localhost:8080/
+   ```
+
+   ![API response in client logs](screenshots/image-14.png)
+
+3. Check server logs to confirm authorization succeeded:
+
+   ![Server logs](screenshots/image-15.png)
+
+4. Verify the JSON data returned from the API:
+
+   ![Fetched API data](screenshots/image-16.png)
+
+---
+
+Ali’s token-based use case demonstrates how to store and inject simple credentials with Vault and use them in a Kubernetes application for secure API access.
