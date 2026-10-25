@@ -1,30 +1,53 @@
 # app/main.py
 import os
+from urllib.parse import urlsplit
+
 import requests
-import json
 from flask import Flask, jsonify, request, abort
 
 app = Flask(__name__)
+REQUEST_TIMEOUT = (3.05, 10)  # Connect and read timeout, in seconds.
 
 
 def fetch_api_data(api_url):
     try:
-        resp = requests.get(api_url)
+        resp = requests.get(api_url, timeout=REQUEST_TIMEOUT, allow_redirects=False)
+        if 300 <= resp.status_code < 400:
+            abort(502, description="Upstream redirects are not allowed")
         resp.raise_for_status()
         return resp.json()
-    except requests.exceptions.RequestException as e:
-        app.logger.error(f"Error fetching data from API: {e}")
-        abort(502, description=str(e))
+    except requests.exceptions.Timeout:
+        abort(504, description="Upstream API timed out")
+    except requests.exceptions.RequestException:
+        app.logger.warning("Upstream API request failed")
+        abort(502, description="Upstream API request failed")
 
 
 @app.route("/", methods=["GET"])
 def root():
-    # allow override via query param ?api_url=
-    api_url = request.args.get("api_url") or os.getenv("API_URL")
+    # Vault configuration is trusted; callers cannot choose a destination.
+    api_url = os.getenv("API_URL")
     if not api_url:
         return jsonify({"error": "Missing API URL"}), 400
 
-    app.logger.info(f"Fetching data from: {api_url}")
+    try:
+        parsed = urlsplit(api_url)
+        valid_url = (
+            parsed.scheme in ("http", "https")
+            and parsed.hostname
+            and not parsed.username
+            and not parsed.password
+            and not parsed.fragment
+        )
+        parsed.port  # Reject malformed port numbers before making a request.
+    except ValueError:
+        valid_url = False
+    if not valid_url:
+        abort(500, description="API_URL must be an HTTP(S) URL without credentials or a fragment")
+
+    if any(value != api_url for value in request.args.getlist("api_url")):
+        abort(400, description="api_url must match the configured API_URL")
+
     data = fetch_api_data(api_url)
     return jsonify(data)
 
