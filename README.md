@@ -1,51 +1,41 @@
-# Using Vault for Secret Management: A Practical Guide with Kubernetes
+# HashiCorp Vault with Kubernetes
 
-## Project Overview
+We built this project to try four ways of using HashiCorp Vault with Kubernetes. Each case uses Kubernetes authentication and Vault Agent injection to pass configuration or credentials to an application.
 
-This project demonstrates how to use **HashiCorp Vault** for secure secret management within Kubernetes. We'll explore real-world use cases for securely storing and retrieving secrets such as:
+## My contribution
 
-1. API URLs Done by **Mohamad**
-2. Username and password Done by **Ammar**
-3. Token-Based API Access Done by **Ali**
-4. Database connection strings Done by **Yehia**
+I worked on the API Fetcher case: a Flask app that reads an API URL from Vault and returns data from that API. I also worked on its Helm deployment. The walkthrough below covers the KV v2 secret, read policy, Kubernetes role, and pod annotations.
 
-Vault will be integrated with **Kubernetes**.
+- [Application source](api-fetcher-case/app/)
+- [Helm chart](api-fetcher-case/api-fetcher/)
+- [Deployment template](api-fetcher-case/api-fetcher/templates/deployment.yaml)
+- [Chart values](api-fetcher-case/api-fetcher/values.yaml)
 
-### Contributors
+## Team use cases
 
-- Mohamad *(API Fetcher use case)*
-- Ali *(Token-Based API use case)*
-- Yehia *(Database URL connection use case)*
-- Ammar *(Username/password login use case)*
+| Use case | Contributor | Files |
+|----------|-------------|-------|
+| API URL configuration | Mohamad | [API Fetcher](api-fetcher-case/) |
+| Token-based API access | Ali | [Token API Fetcher](token-api-fetcher-case/) |
+| Database connection credentials | Yehia | [Database case](database-case/) |
+| Username/password login | Ammar | [Login case](login-case/) |
 
----
+## How it works
 
-## Vault Architecture Overview
+1. Store application configuration or credentials in Vault.
+2. Bind a Vault policy and role to a Kubernetes service account.
+3. Configure pod annotations to request the required values through Vault Agent.
+4. Run the application with the injected configuration.
 
-HashiCorp Vault is designed to securely store, manage, and control access to secrets (API keys, passwords, certificates) through a centralized, encrypted system. Its architecture consists of:
+The walkthroughs below include the setup commands, Helm values, and screenshots from our lab runs.
 
-#### 1. Core Components
+## Before running it
 
-- **Storage Backend** – Persists encrypted secrets (supports Consul, DynamoDB, PostgreSQL, etc.).
-- **Secret Engines** – Plugins that handle secrets (KV, PKI, AWS, databases).
-- **Auth Methods** – Controls user/application access (LDAP, JWT, Kubernetes, OIDC).
-- **API/CLI** – Interfaces for interactions (RESTful API and vault CLI).
+These are lab examples. Replace the example credentials and use your own cluster and image settings. High availability and automatic credential rotation are outside this project's scope.
 
-#### 2. Security Layers
+For the API Fetcher, compare the checked-in [deployment template](api-fetcher-case/api-fetcher/templates/deployment.yaml) with the annotations in the walkthrough below. The template currently sets `agent-inject` to the role name and reads `api-url`; the walkthrough uses `agent-inject: "true"` and the secret key `api_url`. Align those values before deploying.
 
-- **Encryption** – All data is encrypted before storage (AES-256-GCM).
-- **Lease/TTL** – Secrets are dynamically issued and automatically revoked.
-- **Audit Logging** – Tracks all requests for compliance.
-
-#### 3. High Availability (HA)
-
-- Supports multi-server clusters with leader-follower replication.
-- Auto-failover ensures uptime if a node fails.
-
-#### 4. Extensibility
-
-- Plugins for custom secret engines, auth methods, and storage backends.
-- Vault’s architecture ensures zero-trust security, scalability, and seamless integration with cloud/on-prem systems.
+The app also accepts an API URL through a query parameter and makes requests without a timeout. Add destination restrictions and a request timeout before exposing it publicly.
 
 ---
 
