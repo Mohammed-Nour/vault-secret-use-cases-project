@@ -33,9 +33,17 @@ The walkthroughs below include the setup commands, Helm values, and screenshots 
 
 These are lab examples. Replace the example credentials and use your own cluster and image settings. High availability and automatic credential rotation are outside this project's scope.
 
-For the API Fetcher, compare the checked-in [deployment template](api-fetcher-case/api-fetcher/templates/deployment.yaml) with the annotations in the walkthrough below. The template currently sets `agent-inject` to the role name and reads `api-url`; the walkthrough uses `agent-inject: "true"` and the secret key `api_url`. Align those values before deploying.
+The API Fetcher uses `agent-inject: "true"` and reads the Vault key named by `vault.secretKey`, which defaults to `api_url`. Set the same key when storing the secret in Vault.
 
-The app also accepts an API URL through a query parameter and makes requests without a timeout. Add destination restrictions and a request timeout before exposing it publicly.
+The app only fetches the URL configured through `API_URL`. If you pass `?api_url=`, it must match that configured URL exactly. Requests have a 3.05-second connection timeout and a 10-second read timeout. Redirects are rejected. Choose a trusted endpoint when setting the Vault secret; callers cannot select a different destination.
+
+Run the API Fetcher regression tests from the repository root after installing `api-fetcher-case/app/requirements.txt`:
+
+```bash
+python3 -m unittest discover -s api-fetcher-case/app/tests -v
+```
+
+After changing the application, build and push a new image tag and set `image.tag` to it before deploying. The existing `v-1.0.0` image does not contain these request restrictions.
 
 ---
 
@@ -122,7 +130,7 @@ exit
 
 ### 4. Build the API Fetcher App
 
-This Flask-based app fetches data from an external API defined in the `API_URL` environment variable or query parameter.
+This Flask-based app fetches data from the API defined in the `API_URL` environment variable loaded from Vault.
 
 ```bash
 # Build the Docker image

@@ -36,7 +36,7 @@ vault:
   enable: true
   role: "api-fetcher"
   secretPath: "internal/data/database/config"
-  secretKey: "api-url"
+  secretKey: "api_url"
 
 
 # This is for setting Kubernetes Annotations to a Pod.

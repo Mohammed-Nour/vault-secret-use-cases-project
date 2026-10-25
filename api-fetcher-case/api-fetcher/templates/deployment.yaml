@@ -15,12 +15,12 @@ spec:
     metadata:
       annotations:
         # Vault annotations
-        vault.hashicorp.com/agent-inject: "{{ .Values.vault.role }}"
+        vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/role: "{{ .Values.vault.role }}"
         vault.hashicorp.com/agent-inject-secret-database-config.txt: "{{ .Values.vault.secretPath }}"
         vault.hashicorp.com/agent-inject-template-database-config.txt: |
           {{`{{- with secret "`}}{{ .Values.vault.secretPath }}{{`" -}}`}}
-          API_URL={{`{{ .Data.data.api-url }}`}}
+          API_URL={{ printf "{{ index .Data.data %q }}" .Values.vault.secretKey }}
           {{`{{- end }}`}}
       labels:
         {{- include "api-fetcher.labels" . | nindent 8 }}
